@@ -1,45 +1,64 @@
-import random
+import numpy as np
 
-def afficherTraffic(t, nbPhases, vehiculesEnAttente):
-	print("/// TEMPS = {t} ///")
+# Define the Poisson rates for each road
+rates = np.array([0.2, 0.3])
 
-	for i in range(nbPhases - 1):
-		print("Nombre de voitures en attente dans la file {i} : {vehiculesEnAttente[i]}")
+# Define the duration range for traffic lights
+min_duration = 5
+max_duration = 45
 
-def afficherResultats(nbPhases, tempsAttente, congestions):
-	print("\n/// RESULTATS ///")
-	print("Le temps d'attente moyen pour un véhicule est {tempsAttente}")
-	
-	for i in range(nbPhases - 1):
-		print("Congestion moyenne dans la file {i} : {congestions[i]}")
+# Define the number of time steps
+num_steps = 10000
 
-def simulation():
-	# Initialisation des variables
-	nbEtapes = 10000
-	TAU = 0.2
-	LAMBDA = 0.5 - TAU				# La somme de LAMBDA et TAU doit valoir 0.5
-	nbPhases = 3
-	dureeMin = 5
-	dureeMax = 45
-	dureesPhases = [10, 10, 5]		# La dernière entrée correspond à la phase de transition
-	t = 0
-	phaseActive = 0
-	dureeActive = 0
-	nbVehiculesAttente = [0, 0]
-	congestions = [0, 0]
-	tempsAttente = 0
-	gain = 0
-	reward = 0
-	tauxApprentissage = 0.05
-	discount = 0.5
+# Define the learning rate and discount factor for Q-learning
+learning_rate = 0.05
+discount_factor = 0.5
 
-	# Simulation
-	for i in range(nbEtapes):
-		[int(random.expovariate(TAU)) for i in range(10000)]
-		t = t + 1
+# Initialize Q-values for each state-action pair
+Q_values = np.zeros((2, max_duration - min_duration + 1))
 
-	# AFfichage final
-	afficherResultats(nbPhases, tempsAttente, congestions)
+# Initialize the traffic light duration for each road
+light_duration = np.random.randint(min_duration, max_duration + 1, size = 2)
 
-# Main
-simulation()
+# Initialize the total waiting time for each road
+total_waiting_time = np.zeros(2)
+
+# Initialize the number of vehicles that have passed through the intersection for each road
+num_passed = np.zeros(2)
+
+# Loop through each time step
+for t in range(num_steps):
+    # Simulate arrivals of vehicles using a Poisson distribution
+    arrivals = np.random.poisson(rates)
+    
+    # Loop through each road
+    for i in range(2):
+        # Update the total waiting time for the current road
+        total_waiting_time[i] += num_passed[i] * light_duration[i]
+        
+        # Update the number of vehicles that have passed through the intersection for the current road
+        num_passed[i] = arrivals[i] + num_passed[i] - light_duration[i] / 2
+        
+        # Update the Q-value for the current state-action pair
+        reward = -total_waiting_time[i]
+        next_state = np.argmax(Q_values, axis=1)
+        next_reward = -total_waiting_time[next_state[i]]
+        Q_values[i, light_duration[i] - min_duration] += learning_rate * (reward + discount_factor * next_reward - Q_values[i, light_duration[i] - min_duration])
+        
+        # Update the duration of the traffic light for the current road using an epsilon-greedy policy
+        if np.random.rand() < 0.1:
+            light_duration[i] = np.random.randint(min_duration, max_duration + 1)
+        else:
+            light_duration[i] = np.argmin(Q_values[i]) + min_duration
+
+        # Print the optimal traffic light durations for each road
+        print("Optimal traffic light durations:")
+        
+        for i in range(2):
+            print(f"Road {i}: {np.argmin(Q_values[i]) + min_duration}")
+
+        # Print the total waiting time for each road
+        print("Total waiting time:")
+        
+        for i in range(2):
+            print(f"Road {i}: {total_waiting_time[i]}")
