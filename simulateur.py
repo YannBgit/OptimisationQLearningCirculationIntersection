@@ -1,64 +1,101 @@
 import numpy as np
 
-# Define the Poisson rates for each road
-rates = np.array([0.2, 0.3])
+class Intersection:
+	def __init__(self, tauxPoisson1, tauxPoisson2):
+		self.tauxPoisson1 = tauxPoisson1
+		self.tauxPoisson2 = tauxPoisson2
+		self.file1 = 0
+		self.file2 = 0
+		self.lVerte = 0
+		self.duree = 20 # Durée initiale des feux verts
+		self.tempsDepuisDernierChangement = 0
+		
+	def etape(self):
+		# Nombre d'arrivées sur chaque route
+		arrivees1 = np.random.poisson(self.tauxPoisson1)
+		arrivees2 = np.random.poisson(self.tauxPoisson2)
+		
+		# Mise à jour des files
+		self.file1 += arrivees1
+		self.file2 += arrivees2
+		
+		# Mise à jour de la durée des feux verts
+		self.tempsDepuisDernierChangement += 1
 
-# Define the duration range for traffic lights
-min_duration = 5
-max_duration = 45
+		if self.tempsDepuisDernierChangement >= self.duree:
+			self.lVerte = (self.lVerte + 1) % 2
+			self.duree = 20 # Réinitialisation
+			self.tempsDepuisDernierChangement = 0
+		
+		# Passage des voitures au feu vert
+		if self.lVerte == 0:
+			self.file1 = max(0, self.file1 - 1)
+		else:
+			self.file2 = max(0, self.file2 - 1)
+			
+		# Calcul du temps d'attente total
+		tempsAttente = self.file1 + self.file2
+		
+		# Calcul de la récompense
+		recompense = -tempsAttente
 
-# Define the number of time steps
-num_steps = 10000
+		return (self.file1, self.file2, self.lVerte), recompense
+		
+class QLearner:
+	def __init__(self, tauxApprentissage, discount, tauxExploration):
+		self.tauxApprentissage = tauxApprentissage
+		self.discount = discount
+		self.tauxExploration = tauxExploration
+		self.tableauQ = {}
+		
+	def choisirAction(self, etat):
+		if np.random.uniform() < self.tauxExploration:
+			# Exploration
+			return np.random.randint(0, 41, 1)[0]
+		else:
+			# Exploitation
+			if etat in self.tableauQ:
+				return np.argmax(self.tableauQ[etat])
+			
+			else:
+				return np.random.randint(0, 41, 1)[0]
+			
+	def majTableauQ(self, etat, action, recompense, prochainEtat):
+		if etat not in self.tableauQ:
+			self.tableauQ[etat] = np.zeros(42)
 
-# Define the learning rate and discount factor for Q-learning
-learning_rate = 0.05
-discount_factor = 0.5
+		if prochainEtat not in self.tableauQ:
+			self.tableauQ[prochainEtat] = np.zeros(42)
 
-# Initialize Q-values for each state-action pair
-Q_values = np.zeros((2, max_duration - min_duration + 1))
+		ancienneValeur = self.tableauQ[etat][action]
+		prochainMax = np.max(self.tableauQ[prochainEtat])
+		nouvelleValeur = (1 - self.tauxApprentissage) * ancienneValeur + self.tauxApprentissage * (recompense + self.discount * prochainMax)
+		self.tableauQ[etat][action] = nouvelleValeur
+		
+def simulation(tauxPoisson1, tauxPoisson2):
+	intersection = Intersection(tauxPoisson1, tauxPoisson2)
+	agent = QLearner(tauxApprentissage = 0.05, discount = 0.05, tauxExploration = 0.05)
+	tempsAttenteTotal1 = 0
+	tempsAttenteTotal2 = 0
 
-# Initialize the traffic light duration for each road
-light_duration = np.random.randint(min_duration, max_duration + 1, size = 2)
+	for i in range(10000):
+		etat = (intersection.file1, intersection.file2, intersection.lVerte)
+		action = agent.choisirAction(etat)
+		intersection.duree = action + 5 # Intervalle entre passage de rouge à vert
+		prochainEtat, recompense = intersection.etape()
+		agent.majTableauQ(etat, action, recompense, prochainEtat)
+		tempsAttenteTotal1 += prochainEtat[0]
+		tempsAttenteTotal2 += prochainEtat[1]
+	
+	moyenneTempsAttente1 = tempsAttenteTotal1 / (10000 * tauxPoisson1)
+	moyenneTempsAttente2 = tempsAttenteTotal2 / (10000 * tauxPoisson2)
 
-# Initialize the total waiting time for each road
-total_waiting_time = np.zeros(2)
+	print("/// RESULTATS ///")
+	print("Temps d'attente total :", tempsAttenteTotal1 + tempsAttenteTotal2)
+	print("Temps d'attente moyen :", (moyenneTempsAttente1 + moyenneTempsAttente2) / 2)
+	print("Temps d'attente total au feu 1 :", tempsAttenteTotal1)
+	print("Temps d'attente moyen au feu 1 :", moyenneTempsAttente1)
+	print("Temps d'attente total au feu 2 :", tempsAttenteTotal2)
+	print("Temps d'attente moyen au feu 2 :", moyenneTempsAttente2)
 
-# Initialize the number of vehicles that have passed through the intersection for each road
-num_passed = np.zeros(2)
-
-# Loop through each time step
-for t in range(num_steps):
-    # Simulate arrivals of vehicles using a Poisson distribution
-    arrivals = np.random.poisson(rates)
-    
-    # Loop through each road
-    for i in range(2):
-        # Update the total waiting time for the current road
-        total_waiting_time[i] += num_passed[i] * light_duration[i]
-        
-        # Update the number of vehicles that have passed through the intersection for the current road
-        num_passed[i] = arrivals[i] + num_passed[i] - light_duration[i] / 2
-        
-        # Update the Q-value for the current state-action pair
-        reward = -total_waiting_time[i]
-        next_state = np.argmax(Q_values, axis=1)
-        next_reward = -total_waiting_time[next_state[i]]
-        Q_values[i, light_duration[i] - min_duration] += learning_rate * (reward + discount_factor * next_reward - Q_values[i, light_duration[i] - min_duration])
-        
-        # Update the duration of the traffic light for the current road using an epsilon-greedy policy
-        if np.random.rand() < 0.1:
-            light_duration[i] = np.random.randint(min_duration, max_duration + 1)
-        else:
-            light_duration[i] = np.argmin(Q_values[i]) + min_duration
-
-        # Print the optimal traffic light durations for each road
-        print("Optimal traffic light durations:")
-        
-        for i in range(2):
-            print(f"Road {i}: {np.argmin(Q_values[i]) + min_duration}")
-
-        # Print the total waiting time for each road
-        print("Total waiting time:")
-        
-        for i in range(2):
-            print(f"Road {i}: {total_waiting_time[i]}")
+simulation(0.2, 0.3)
