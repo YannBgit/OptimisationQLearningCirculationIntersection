@@ -3,8 +3,8 @@
 Simulateur de recherche de temps d'attentes optimaux dans une intersection par utilisation de Q-learning.
 
 Réalisé par :
-- Yann BARBIER 21800844
-- Fanoa RAZAFIMBELO 22105665
+- Yann BARBIER
+- Fanoa RAZAFIMBELO
 
 Le code source se trouve dans le jupyter notebook suivant :
 - TraficSignalControl.ipynb
